@@ -1,21 +1,34 @@
 import type { Size, ImageSize, Point } from './types'
 
 /**
- * Compute the dimension of the crop area based on image size and aspect ratio
+ * Compute the dimension of the crop area based on image size, aspect ratio, and optionally rotation
  * @param imgWidth width of the src image in pixels
  * @param imgHeight height of the src image in pixels
  * @param aspect aspect ratio of the crop
+ * @param containerRect container element's bounding rect
+ * @param rotation rotation angle in degrees
  */
-export function getCropSize(imgWidth: number, imgHeight: number, aspect: number) {
-  if (imgWidth >= imgHeight * aspect) {
+export function getCropSize(
+  imgWidth: number,
+  imgHeight: number,
+  aspect: number,
+  containerRect: DOMRect | null,
+  rotation = 0
+): Size {
+  const { width, height } = rotateSize(imgWidth, imgHeight, rotation)
+  const fittingWidth = Math.min(width, containerRect?.width ?? width)
+  const fittingHeight = Math.min(height, containerRect?.height ?? height)
+
+  if (fittingWidth > fittingHeight * aspect) {
     return {
-      width: imgHeight * aspect,
-      height: imgHeight,
+      width: fittingHeight * aspect,
+      height: fittingHeight,
     }
   }
+
   return {
-    width: imgWidth,
-    height: imgWidth / aspect,
+    width: fittingWidth,
+    height: fittingWidth / aspect,
   }
 }
 
@@ -24,18 +37,21 @@ export function getCropSize(imgWidth: number, imgHeight: number, aspect: number)
  * @param position new x/y position requested for the image
  * @param imageSize width/height of the src image
  * @param cropSize width/height of the crop area
- * @param  zoom zoom value
+ * @param zoom zoom value
+ * @param rotation rotation angle in degrees
  * @returns
  */
 export function restrictPosition(
   position: Point,
   imageSize: Size,
   cropSize: Size,
-  zoom: number
+  zoom: number,
+  rotation = 0
 ): Point {
+  const { width, height } = rotateSize(imageSize.width, imageSize.height, rotation)
   return {
-    x: restrictPositionCoord(position.x, imageSize.width, cropSize.width, zoom),
-    y: restrictPositionCoord(position.y, imageSize.height, cropSize.height, zoom),
+    x: restrictPositionCoord(position.x, width, cropSize.width, zoom),
+    y: restrictPositionCoord(position.y, height, cropSize.height, zoom),
   }
 }
 
@@ -44,7 +60,7 @@ function restrictPositionCoord(
   imageSize: number,
   cropSize: number,
   zoom: number
-) {
+): number {
   // Default max position calculation
   let maxPosition = (imageSize * zoom) / 2 - cropSize / 2
 
@@ -57,18 +73,23 @@ function restrictPositionCoord(
   return Math.min(maxPosition, Math.max(position, -maxPosition))
 }
 
-export function getDistanceBetweenPoints(pointA: Point, pointB: Point) {
+export function getDistanceBetweenPoints(pointA: Point, pointB: Point): number {
   return Math.sqrt(Math.pow(pointA.y - pointB.y, 2) + Math.pow(pointA.x - pointB.x, 2))
+}
+
+export function getRotationBetweenPoints(pointA: Point, pointB: Point): number {
+  return (Math.atan2(pointB.y - pointA.y, pointB.x - pointA.x) * 180) / Math.PI
 }
 
 /**
  * Compute the output cropped area of the image in percentages and pixels.
  * x/y are the top-left coordinates on the src image
- * @param  crop x/y position of the current center of the image
- * @param  imageSize width/height of the src image (default is size on the screen, natural is the original size)
- * @param  cropSize width/height of the crop area
+ * @param crop x/y position of the current center of the image
+ * @param imgSize width/height of the src image (default is size on the screen, natural is the original size)
+ * @param cropSize width/height of the crop area
  * @param aspect aspect value
  * @param zoom zoom value
+ * @param rotation rotation angle in degrees
  * @param restrictPosition whether we should limit or not the cropped area
  */
 export function computeCroppedArea(
@@ -77,39 +98,41 @@ export function computeCroppedArea(
   cropSize: Size,
   aspect: number,
   zoom: number,
+  rotation = 0,
   restrictPosition = true
 ) {
   const limitAreaFn = restrictPosition ? limitArea : noOp
+  const rotatedImgSize = rotateSize(imgSize.width, imgSize.height, rotation)
+  const rotatedNaturalImgSize = rotateSize(imgSize.naturalWidth, imgSize.naturalHeight, rotation)
+
   const croppedAreaPercentages = {
     x: limitAreaFn(
       100,
-      (((imgSize.width - cropSize.width / zoom) / 2 - crop.x / zoom) / imgSize.width) * 100
+      (((rotatedImgSize.width - cropSize.width / zoom) / 2 - crop.x / zoom) /
+        rotatedImgSize.width) *
+        100
     ),
     y: limitAreaFn(
       100,
-      (((imgSize.height - cropSize.height / zoom) / 2 - crop.y / zoom) / imgSize.height) * 100
+      (((rotatedImgSize.height - cropSize.height / zoom) / 2 - crop.y / zoom) /
+        rotatedImgSize.height) *
+        100
     ),
-    width: limitAreaFn(100, ((cropSize.width / imgSize.width) * 100) / zoom),
-    height: limitAreaFn(100, ((cropSize.height / imgSize.height) * 100) / zoom),
+    width: limitAreaFn(100, ((cropSize.width / rotatedImgSize.width) * 100) / zoom),
+    height: limitAreaFn(100, ((cropSize.height / rotatedImgSize.height) * 100) / zoom),
   }
-
-  // we compute the pixels size naively
   const widthInPixels = limitAreaFn(
-    imgSize.naturalWidth,
-    (croppedAreaPercentages.width * imgSize.naturalWidth) / 100,
+    rotatedNaturalImgSize.width,
+    (croppedAreaPercentages.width * rotatedNaturalImgSize.width) / 100,
     true
   )
   const heightInPixels = limitAreaFn(
-    imgSize.naturalHeight,
-    (croppedAreaPercentages.height * imgSize.naturalHeight) / 100,
+    rotatedNaturalImgSize.height,
+    (croppedAreaPercentages.height * rotatedNaturalImgSize.height) / 100,
     true
   )
-  const isImgWiderThanHigh = imgSize.naturalWidth >= imgSize.naturalHeight * aspect
+  const isImgWiderThanHigh = rotatedNaturalImgSize.width >= rotatedNaturalImgSize.height * aspect
 
-  // then we ensure the width and height exactly match the aspect (to avoid rounding approximations)
-  // if the image is wider than high, when zoom is 0, the crop height will be equals to iamge height
-  // thus we want to compute the width from the height and aspect for accuracy.
-  // Otherwise, we compute the height from width and aspect.
   const sizePixels = isImgWiderThanHigh
     ? {
         width: Math.round(heightInPixels * aspect),
@@ -122,13 +145,13 @@ export function computeCroppedArea(
   const croppedAreaPixels = {
     ...sizePixels,
     x: limitAreaFn(
-      imgSize.naturalWidth - sizePixels.width,
-      (croppedAreaPercentages.x * imgSize.naturalWidth) / 100,
+      rotatedNaturalImgSize.width - sizePixels.width,
+      (croppedAreaPercentages.x * rotatedNaturalImgSize.width) / 100,
       true
     ),
     y: limitAreaFn(
-      imgSize.naturalHeight - sizePixels.height,
-      (croppedAreaPercentages.y * imgSize.naturalHeight) / 100,
+      rotatedNaturalImgSize.height - sizePixels.height,
+      (croppedAreaPercentages.y * rotatedNaturalImgSize.height) / 100,
       true
     ),
   }
@@ -141,12 +164,12 @@ export function computeCroppedArea(
  * @param value
  * @param shouldRound
  */
-function limitArea(max: number, value: number, shouldRound = false) {
+function limitArea(max: number, value: number, shouldRound = false): number {
   const v = shouldRound ? Math.round(value) : value
   return Math.min(max, Math.max(0, v))
 }
 
-function noOp(max: number, value: number) {
+function noOp(max: number, value: number): number {
   return value
 }
 
@@ -155,9 +178,24 @@ function noOp(max: number, value: number) {
  * @param a
  * @param b
  */
-export function getCenter(a: Point, b: Point) {
+export function getCenter(a: Point, b: Point): Point {
   return {
     x: (b.x + a.x) / 2,
     y: (b.y + a.y) / 2,
+  }
+}
+
+export function getRadianAngle(degreeValue: number): number {
+  return (degreeValue * Math.PI) / 180
+}
+
+/**
+ * Returns the new bounding area of a rotated rectangle.
+ */
+export function rotateSize(width: number, height: number, rotation: number): Size {
+  const rotRad = getRadianAngle(rotation)
+  return {
+    width: Math.abs(Math.cos(rotRad) * width) + Math.abs(Math.sin(rotRad) * height),
+    height: Math.abs(Math.sin(rotRad) * width) + Math.abs(Math.cos(rotRad) * height),
   }
 }

@@ -17,6 +17,7 @@
   export let crossOrigin: HTMLImgAttributes['crossorigin'] = null
   export let restrictPosition = true
   export let tabindex: number | undefined = undefined
+  export let rotation = 0
 
   let cropperSize: Size | null = null
   let imageSize: ImageSize = { width: 0, height: 0, naturalWidth: 0, naturalHeight: 0 }
@@ -26,6 +27,7 @@
   let dragStartPosition: Point = { x: 0, y: 0 }
   let dragStartCrop: Point = { x: 0, y: 0 }
   let lastPinchDistance = 0
+  let lastPinchRotation = 0
   let rafDragTimeout: number | null = null
   let rafZoomTimeout: number | null = null
 
@@ -75,6 +77,9 @@
   }
 
   const computeSizes = () => {
+    if (containerEl) {
+      containerRect = containerEl.getBoundingClientRect()
+    }
     if (imgEl) {
       imageSize = {
         width: imgEl.width,
@@ -82,10 +87,9 @@
         naturalWidth: imgEl.naturalWidth,
         naturalHeight: imgEl.naturalHeight,
       }
-      cropperSize = cropSize ? cropSize : helpers.getCropSize(imgEl.width, imgEl.height, aspect)
-    }
-    if (containerEl) {
-      containerRect = containerEl.getBoundingClientRect()
+      cropperSize = cropSize
+        ? cropSize
+        : helpers.getCropSize(imgEl.width, imgEl.height, aspect, containerRect, rotation)
     }
   }
 
@@ -146,7 +150,7 @@
       }
 
       crop = restrictPosition
-        ? helpers.restrictPosition(requestedPosition, imageSize, cropperSize, zoom)
+        ? helpers.restrictPosition(requestedPosition, imageSize, cropperSize, zoom, rotation)
         : requestedPosition
     })
   }
@@ -160,6 +164,7 @@
     const pointA = getTouchPoint(e.touches[0])
     const pointB = getTouchPoint(e.touches[1])
     lastPinchDistance = helpers.getDistanceBetweenPoints(pointA, pointB)
+    lastPinchRotation = helpers.getRotationBetweenPoints(pointA, pointB)
     onDragStart(helpers.getCenter(pointA, pointB))
   }
 
@@ -175,6 +180,11 @@
       const newZoom = zoom * (distance / lastPinchDistance)
       setNewZoom(newZoom, center)
       lastPinchDistance = distance
+
+      let newRotation = helpers.getRotationBetweenPoints(pointA, pointB)
+      newRotation = newRotation + (newRotation - lastPinchRotation)
+      dispatch('rotationchanged', { rotation: newRotation })
+      lastPinchRotation = newRotation
     })
   }
 
@@ -210,15 +220,14 @@
       y: zoomTarget.y * zoom - zoomPoint.y,
     }
     crop = restrictPosition
-      ? helpers.restrictPosition(requestedPosition, imageSize, cropperSize, zoom)
+      ? helpers.restrictPosition(requestedPosition, imageSize, cropperSize, zoom, rotation)
       : requestedPosition
   }
 
   const emitCropData = () => {
     if (!cropperSize || cropperSize.width === 0) return
-    // this is to ensure the crop is correctly restricted after a zoom back (https://github.com/ricardo-ch/svelte-easy-crop/issues/6)
     const position = restrictPosition
-      ? helpers.restrictPosition(crop, imageSize, cropperSize, zoom)
+      ? helpers.restrictPosition(crop, imageSize, cropperSize, zoom, rotation)
       : crop
     const { croppedAreaPercentages, croppedAreaPixels } = helpers.computeCroppedArea(
       position,
@@ -226,6 +235,7 @@
       cropperSize,
       getAspect(),
       zoom,
+      rotation,
       restrictPosition
     )
 
@@ -238,7 +248,9 @@
   // ------ Reactive statement ------
   //when aspect changes, we reset the cropperSize
   $: if (imgEl) {
-    cropperSize = cropSize ? cropSize : helpers.getCropSize(imgEl.width, imgEl.height, aspect)
+    cropperSize = cropSize
+      ? cropSize
+      : helpers.getCropSize(imgEl.width, imgEl.height, aspect, containerRect, rotation)
   }
 
   // when zoom changes, we recompute the cropped area
@@ -262,7 +274,7 @@
     src={image}
     on:load={onImgLoad}
     alt=""
-    style="transform: translate({crop.x}px, {crop.y}px) scale({zoom});"
+    style="transform: translate({crop.x}px, {crop.y}px) scale({zoom}) rotate({rotation}deg);"
     crossorigin={crossOrigin}
   />
   {#if cropperSize}

@@ -29,4 +29,7 @@ export interface DispatchEvents {
     percent: CropArea
     pixels: CropArea
   }
+  rotationchanged: {
+    rotation: number
+  }
 }
