@@ -4,20 +4,22 @@ import type { Size, ImageSize, Point } from './types'
  * Compute the dimension of the crop area based on image size, aspect ratio, and optionally rotation
  * @param imgWidth width of the src image in pixels
  * @param imgHeight height of the src image in pixels
- * @param aspect aspect ratio of the crop
- * @param containerRect container element's bounding rect
+ * @param containerWidth width of the container element in pixels
+ * @param containerHeight height of the container element in pixels
+ * @param aspect aspect ratio of the crop area
  * @param rotation rotation angle in degrees
  */
 export function getCropSize(
   imgWidth: number,
   imgHeight: number,
+  containerWidth: number,
+  containerHeight: number,
   aspect: number,
-  containerRect: DOMRect | null,
   rotation = 0
 ): Size {
   const { width, height } = rotateSize(imgWidth, imgHeight, rotation)
-  const fittingWidth = Math.min(width, containerRect?.width ?? width)
-  const fittingHeight = Math.min(height, containerRect?.height ?? height)
+  const fittingWidth = Math.min(width, containerWidth)
+  const fittingHeight = Math.min(height, containerHeight)
 
   if (fittingWidth > fittingHeight * aspect) {
     return {

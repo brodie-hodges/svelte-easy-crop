@@ -89,7 +89,7 @@
       }
       cropperSize = cropSize
         ? cropSize
-        : helpers.getCropSize(imgEl.width, imgEl.height, aspect, containerRect, rotation)
+        : helpers.getCropSize(imgEl.width, imgEl.height, containerRect?.width ?? imgEl.width, containerRect?.height ?? imgEl.height, aspect, rotation)
     }
   }
 
@@ -247,14 +247,13 @@
 
   // ------ Reactive statement ------
   //when aspect changes, we reset the cropperSize
-  $: if (imgEl) {
-    cropperSize = cropSize
-      ? cropSize
-      : helpers.getCropSize(imgEl.width, imgEl.height, aspect, containerRect, rotation)
+  $: if (imgEl && containerRect) {
+    cropperSize = helpers.getCropSize(imgEl.width, imgEl.height, containerRect.width, containerRect.height, aspect, rotation)
   }
 
   // when zoom changes, we recompute the cropped area
   $: zoom && emitCropData()
+  $: rotation && emitCropData()
 </script>
 
 <svelte:window on:resize={computeSizes} />

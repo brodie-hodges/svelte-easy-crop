@@ -4,16 +4,30 @@ import { describe, test, expect } from 'vitest'
 describe('Helpers', () => {
   describe('getCropSize', () => {
     test('when image width is higher than the height based on the aspect', () => {
-      const cropSize = helpers.getCropSize(1200, 600, 4 / 3)
+      const cropSize = helpers.getCropSize(1200, 600, 1200, 1000, 4 / 3, 0)
       expect(cropSize).toEqual({ height: 600, width: 800 })
     })
     test('when image width is smaller than the height based on the aspect', () => {
-      const cropSize = helpers.getCropSize(600, 1200, 4 / 3)
+      const cropSize = helpers.getCropSize(600, 1200, 1000, 1200, 4 / 3, 0)
       expect(cropSize).toEqual({ height: 450, width: 600 })
     })
     test('when image dimensions exactly match the aspect', () => {
-      const cropSize = helpers.getCropSize(800, 600, 4 / 3)
+      const cropSize = helpers.getCropSize(800, 600, 1000, 1000, 4 / 3, 0)
       expect(cropSize).toEqual({ height: 600, width: 800 })
+    })
+    // New tests for rotation
+    test('when image is rotated 90 degrees', () => {
+      const cropSize = helpers.getCropSize(800, 600, 1000, 1000, 4 / 3, 90)
+      expect(cropSize).toEqual({ height: 800, width: 600 }) // Assuming getCropSize adjusts for rotation
+    })
+    // Additional tests considering containerWidth and containerHeight
+    test('when container constraints are smaller than the crop size', () => {
+      const cropSize = helpers.getCropSize(1200, 1200, 800, 800, 1, 0)
+      expect(cropSize).toEqual({ height: 800, width: 800 })
+    })
+    test('when image is rotated 90 degrees with container constraints', () => {
+      const cropSize = helpers.getCropSize(1200, 600, 1000, 500, 4 / 3, 90)
+      expect(cropSize).toEqual({ height: 450.0000000000001, width: 600.0000000000001 }) // Assuming getCropSize adjusts based on rotation and container size
     })
   })
 
@@ -127,7 +141,7 @@ describe('Helpers', () => {
       const cropSize = { width: 500, height: 300 }
       const aspect = 4 / 3
       const zoom = 1
-      const areas = helpers.computeCroppedArea(crop, imgSize, cropSize, aspect, zoom, false)
+      const areas = helpers.computeCroppedArea(crop, imgSize, cropSize, aspect, zoom, 0, false)
       expect(areas.croppedAreaPercentages).toEqual({ height: 50, width: 50, x: -75, y: -75 })
       expect(areas.croppedAreaPixels).toEqual({ height: 600, width: 800, x: -1500, y: -900 })
     })
